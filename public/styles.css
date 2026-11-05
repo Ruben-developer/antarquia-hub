@@ -42,9 +42,19 @@ h1 {
   letter-spacing: -.03em;
 }
 
+.manifesto {
+  max-width: 30ch;
+  margin: 1.6rem 0 0;
+  font-family: "Playfair Display", Georgia, "Times New Roman", serif;
+  font-size: clamp(1.35rem, 3.4vw, 2.05rem);
+  font-style: italic;
+  line-height: 1.2;
+  color: var(--ink);
+}
+
 .lead {
   max-width: 34ch;
-  margin: 1.25rem 0 0;
+  margin: 1rem 0 0;
   font-size: clamp(1.05rem, 2.2vw, 1.35rem);
   color: var(--muted);
 }
@@ -75,6 +85,26 @@ h1 {
   transform: translateY(-2px);
   box-shadow: 0 10px 30px rgba(28, 26, 23, .08);
   outline: none;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: .2rem;
+}
+
+.card-head picture {
+  display: block;
+}
+
+.logo {
+  display: block;
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+  border-radius: 6px;
 }
 
 .tag {
