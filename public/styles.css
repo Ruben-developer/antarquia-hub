@@ -159,16 +159,14 @@ h1 {
   margin-bottom: .2rem;
 }
 
-.card-head picture {
-  display: block;
-}
-
 .logo {
   display: block;
-  width: 52px;
-  height: 52px;
+  width: 56px;
+  height: 56px;
+  padding: 3px;
   object-fit: contain;
-  border-radius: 6px;
+  background: #fff;
+  border-radius: 50%;
 }
 
 .tag {
