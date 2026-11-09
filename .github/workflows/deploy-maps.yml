@@ -41,6 +41,13 @@ jobs:
       - name: Asegurar subdominio workers.dev
         run: |
           set -euo pipefail
+          EXISTING="$(curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const j=JSON.parse(s);process.stdout.write((j.result&&j.result.subdomain)||"")}catch(e){}})')"
+          if [ -n "$EXISTING" ]; then
+            echo "El subdominio workers.dev ya existe: $EXISTING"
+            exit 0
+          fi
           SUB="antarquia-$(printf '%s' "$CLOUDFLARE_ACCOUNT_ID" | cut -c1-8)"
           CODE="$(curl -s -o /tmp/subdominio.json -w '%{http_code}' -X PUT \
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" \
@@ -49,7 +56,7 @@ jobs:
             --data "{\"subdomain\":\"$SUB\"}")"
           cat /tmp/subdominio.json || true
           if [ "$CODE" != "200" ]; then
-            echo "No se pudo asegurar el subdominio workers.dev (HTTP $CODE)." >&2
+            echo "No se pudo crear el subdominio workers.dev (HTTP $CODE)." >&2
             exit 1
           fi
 
