@@ -41,7 +41,7 @@ jobs:
       - name: Crear o reutilizar el namespace KV
         run: |
           set -euo pipefail
-          ID="$(npx wrangler kv namespace list --json | node -e '
+          ID="$(npx wrangler kv namespace list | node -e '
             let s = "";
             process.stdin.on("data", d => s += d).on("end", () => {
               try {
@@ -54,7 +54,7 @@ jobs:
           if [ -z "$ID" ]; then
             echo "Creando namespace mapas-antarquia…"
             OUT="$(npx wrangler kv namespace create mapas-antarquia)"
-            ID="$(printf '%s\n' "$OUT" | sed -n 's/.*id = "\([^"]*\)".*/\1/p' | head -1)"
+            ID="$(printf '%s\n' "$OUT" | grep -oE '[0-9a-f]{32}' | head -1)"
           fi
           if [ -z "$ID" ]; then
             echo "No se pudo obtener el id del namespace KV." >&2
