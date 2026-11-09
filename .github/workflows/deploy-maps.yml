@@ -38,6 +38,21 @@ jobs:
       - name: Instalar dependencias
         run: npm ci --ignore-scripts
 
+      - name: Asegurar subdominio workers.dev
+        run: |
+          set -euo pipefail
+          SUB="antarquia-$(printf '%s' "$CLOUDFLARE_ACCOUNT_ID" | cut -c1-8)"
+          CODE="$(curl -s -o /tmp/subdominio.json -w '%{http_code}' -X PUT \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data "{\"subdomain\":\"$SUB\"}")"
+          cat /tmp/subdominio.json || true
+          if [ "$CODE" != "200" ]; then
+            echo "No se pudo asegurar el subdominio workers.dev (HTTP $CODE)." >&2
+            exit 1
+          fi
+
       - name: Desplegar Worker y rutas
         run: npx wrangler deploy --config wrangler.toml
 
