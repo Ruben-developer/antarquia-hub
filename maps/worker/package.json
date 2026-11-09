@@ -1,0 +1,13 @@
+{
+  "name": "mapas-antarquia-worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "API colectiva de Cartografía Anarquista y Mapeo Cordillera",
+  "scripts": {
+    "dev": "wrangler dev --config wrangler.toml --local",
+    "deploy": "wrangler deploy --config wrangler.toml"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

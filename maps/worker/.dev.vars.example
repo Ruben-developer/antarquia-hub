@@ -1,0 +1,3 @@
+CORDILLERA_PASSPHRASE=cambia-esta-frase
+SESSION_SECRET=genera-un-secreto-largo-y-aleatorio
+ADMIN_TOKEN=genera-un-token-de-administracion

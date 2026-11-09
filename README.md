@@ -1,11 +1,13 @@
 # Antarquia — hub
 
-Portada de **https://antarquia.cl**. Enlaza a los cuatro proyectos públicos:
+Portada de **https://antarquia.cl**. Enlaza a los proyectos públicos:
 
 - [La Idea](https://laidea.antarquia.cl/) — recopilación
 - [Por la Anarquía](https://porlaanarquia.antarquia.cl/) — difusión
 - [Marea](https://marea.antarquia.cl/) — edición
 - [Punto de Ignición](https://puntodeignicion.antarquia.cl/) — proyección
+- [Cartografía Anarquista](https://cartografia.antarquia.cl/) — mapa colectivo del Gran Santiago
+- [Mapeo Cordillera](https://cordillera.antarquia.cl/) — mapa compartido de La Florida y Puente Alto (con frase)
 
 Utilidades (`utils.antarquia.cl`) queda fuera de la portada por decisión de producto.
 
@@ -14,11 +16,25 @@ Utilidades (`utils.antarquia.cl`) queda fuera de la portada por decisión de pro
 HTML y CSS estáticos servidos por un Worker de Cloudflare con assets. El apex
 `antarquia.cl` se configura como custom domain del Worker.
 
+Los dos mapas viven en `maps/`: un Worker con API sobre KV, dos custom domains
+y un sitio estático compartido (Leaflet, límites comunales y `map-app.js`).
+
 ## Desarrollo
 
 ```bash
 npx wrangler dev
 ```
+
+Para los mapas:
+
+```bash
+cd maps/worker
+cp .dev.vars.example .dev.vars   # o crea el tuyo
+npm install
+npm run dev
+```
+
+Abre `http://localhost:8787/cartografia/` o `http://localhost:8787/cordillera/`.
 
 ## Deploy
 
@@ -26,8 +42,18 @@ npx wrangler dev
 npx wrangler deploy
 ```
 
-El workflow `deploy.yml` despliega en cada push a `main`. Requiere los secretos
-`CLOUDFLARE_API_TOKEN` y `CLOUDFLARE_ACCOUNT_ID` en el repo.
+El workflow `deploy.yml` despliega el hub en cada push a `main`. El workflow
+`deploy-maps.yml` despliega los mapas cuando cambia `maps/`. Ambos requieren los
+secretos `CLOUDFLARE_API_TOKEN` y `CLOUDFLARE_ACCOUNT_ID` en el repo.
+
+Los mapas usan además:
+
+- `CORDILLERA_PASSPHRASE` — frase de acceso del mapa Cordillera
+- `SESSION_SECRET` — clave HMAC para firmar la cookie de sesión
+- `ADMIN_TOKEN` — token de moderación de ambos mapas
+
+El workflow crea (o reutiliza) el namespace KV `mapas-antarquia`, sustituye
+`__KV_ID__` y configura los tres secretos en el Worker.
 
 ## DNS
 

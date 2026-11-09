@@ -1,0 +1,24 @@
+name = "mapas-antarquia"
+main = "index.js"
+compatibility_date = "2026-11-09"
+
+[assets]
+directory = "../site"
+binding = "ASSETS"
+not_found_handling = "none"
+run_worker_first = true
+
+[[kv_namespaces]]
+binding = "MAPS"
+id = "__KV_ID__"
+
+[[routes]]
+pattern = "cartografia.antarquia.cl"
+custom_domain = true
+
+[[routes]]
+pattern = "cordillera.antarquia.cl"
+custom_domain = true
+
+[vars]
+APP_NAME = "Mapas Antarquía"

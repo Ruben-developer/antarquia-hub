@@ -175,6 +175,12 @@ h1 {
   border-radius: 50%;
 }
 
+.logo-map {
+  padding: 0;
+  background: #0a0a0a;
+  border-radius: 4px;
+}
+
 .tag {
   font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: .7rem;

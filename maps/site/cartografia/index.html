@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Cartografía Anarquista — Antarquía</title>
+<meta name="description" content="Cartografía colectiva del Gran Santiago: marca puntos de apoyo mutuo, rutas, zonas, radios y memoria. Mapa abierto con moderación.">
+<meta name="theme-color" content="#0a0a0a">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpolygon points='50,4 92,27 92,73 50,96 8,73 8,27' fill='%23ffc800'/%3E%3Cpolygon points='50,14 84,33 84,67 50,86 16,67 16,33' fill='%230a0a0a'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/assets/leaflet/leaflet.css">
+<link rel="stylesheet" href="/assets/tool.css">
+<link rel="stylesheet" href="/assets/map.css">
+</head>
+<body class="mapa" data-site="cartografia" data-gated="0"
+      data-title="Cartografía Anarquista" data-sub="Mapeo colectivo · Gran Santiago"
+      data-bounds="/assets/bounds-gran-santiago.json"
+      data-view="-33.66,-70.82,-33.33,-70.43"
+      data-maxbounds="-33.75,-70.85,-33.25,-70.35"
+      data-geoviewbox="-70.85,-33.25,-70.35,-33.75">
+
+<nav class="top">
+  <a class="back" href="https://antarquia.cl">← antarquía</a>
+  <div class="brand"><b>cartografía</b> / antarquía</div>
+</nav>
+
+<main class="mapapp">
+  <aside class="panel" id="panel">
+    <div class="panel-head">
+      <div class="hexico" aria-hidden="true"><span>🗺️</span></div>
+      <div>
+        <h1>Cartografía Anarquista</h1>
+        <p class="sub">Mapeo colectivo · Gran Santiago</p>
+      </div>
+      <button type="button" class="panel-toggle" id="panel-toggle" aria-expanded="true" aria-controls="panel-body" title="Plegar panel">▾</button>
+    </div>
+
+    <div class="panel-body" id="panel-body">
+
+      <section class="block">
+        <h2>Red colectiva</h2>
+        <p class="hint" id="net-status">Conectando con el mapa colectivo…</p>
+        <div class="migrate" id="migrate" hidden>
+          <p>Tienes <b id="migrate-count">0</b> puntos guardados en este navegador. Súbelos al mapa colectivo para que los vean las demás personas.</p>
+          <div class="row">
+            <button type="button" class="primary" id="btn-migrate">Subir mis puntos</button>
+            <button type="button" id="btn-migrate-skip">Ahora no</button>
+          </div>
+        </div>
+        <p class="hint">Mapa abierto: cualquiera con el enlace puede leer y aportar. Los puntos se guardan en un servidor compartido. No publiques datos personales.</p>
+      </section>
+
+      <section class="block">
+        <h2>Herramientas</h2>
+        <div class="tools" id="tools">
+          <button type="button" class="tool" data-tool="point"><span class="ico">📍</span><b>Punto</b><small>lugar o hito</small></button>
+          <button type="button" class="tool" data-tool="line"><span class="ico">〰</span><b>Ruta</b><small>marcha o trayecto</small></button>
+          <button type="button" class="tool" data-tool="zone"><span class="ico">⬡</span><b>Zona</b><small>barrio o área</small></button>
+          <button type="button" class="tool" data-tool="radius"><span class="ico">◯</span><b>Radio</b><small>cobertura</small></button>
+          <button type="button" class="tool" data-tool="measure"><span class="ico">📏</span><b>Medir</b><small>distancias</small></button>
+          <button type="button" class="tool" data-tool="locate"><span class="ico">◎</span><b>Ubicarme</b><small>mi posición</small></button>
+        </div>
+
+        <div class="drawbar" id="drawbar" hidden>
+          <p id="drawhint">Haz clic en el mapa.</p>
+          <div class="row">
+            <button type="button" class="primary" id="btn-finish">Guardar</button>
+            <button type="button" id="btn-undo">Deshacer</button>
+            <button type="button" id="btn-cancel">Cancelar</button>
+          </div>
+        </div>
+
+        <p class="hint">Atajos: <b>P</b> punto · <b>R</b> ruta · <b>Z</b> zona · <b>C</b> radio · <b>M</b> medir · <b>Esc</b> cancelar.</p>
+      </section>
+
+      <section class="block">
+        <h2>Buscar en el mapa</h2>
+        <div class="coordgo">
+          <input type="search" id="geosearch" placeholder="Calle, dirección, lugar o -33.56, -70.57" aria-label="Buscar calle, dirección, lugar o coordenadas">
+          <button type="button" id="btn-geosearch">Buscar</button>
+        </div>
+        <div class="geo-list" id="georesults" aria-live="polite"></div>
+        <p class="hint">Busca en OpenStreetMap dentro del Gran Santiago. Si escribes solo el nombre de la calle, se marca completa.</p>
+      </section>
+
+      <form class="block form" id="itemform" hidden>
+        <h2 id="formtitle">Nuevo elemento</h2>
+        <div class="field">
+          <label for="f-name">Nombre *</label>
+          <input id="f-name" type="text" maxlength="90" required placeholder="Ej: olla común, huerta, memorial…">
+        </div>
+        <div class="two">
+          <div class="field">
+            <label for="f-cat">Categoría</label>
+            <select id="f-cat"></select>
+          </div>
+          <div class="field">
+            <label for="f-est">Estado</label>
+            <select id="f-est"></select>
+          </div>
+        </div>
+        <div class="two">
+          <div class="field">
+            <label for="f-offers">Ofrece</label>
+            <input id="f-offers" type="text" maxlength="120" placeholder="agua, alimentos, espacio…">
+          </div>
+          <div class="field">
+            <label for="f-needs">Necesita</label>
+            <input id="f-needs" type="text" maxlength="120" placeholder="transporte, insumos…">
+          </div>
+        </div>
+        <div class="two">
+          <div class="field">
+            <label for="f-schedule">Horario</label>
+            <input id="f-schedule" type="text" maxlength="80" placeholder="sáb 10–13 h">
+          </div>
+          <div class="field">
+            <label for="f-contact">Contacto</label>
+            <input id="f-contact" type="text" maxlength="100" placeholder="opcional · evita datos sensibles">
+          </div>
+        </div>
+        <div class="field">
+          <label for="f-author">Firma</label>
+          <input id="f-author" type="text" maxlength="40" placeholder="colectivo o seudónimo (opcional)">
+        </div>
+        <div class="field">
+          <label for="f-note">Nota</label>
+          <textarea id="f-note" rows="2" maxlength="400" placeholder="Contexto, acuerdos, cuidados…"></textarea>
+        </div>
+        <div class="field" id="radiusfield" hidden>
+          <label for="f-radius">Radio (metros)</label>
+          <div class="range">
+            <input id="f-radius-range" type="range" min="50" max="5000" step="50" value="500">
+            <input id="f-radius" type="number" min="50" max="5000" step="50" value="500">
+          </div>
+        </div>
+        <label class="check"><input type="checkbox" id="f-approx"> Ubicación aproximada (difumina el punto)</label>
+        <p class="hint" id="formmeta"></p>
+        <div class="row">
+          <button type="submit" class="primary" id="f-save">Publicar</button>
+          <button type="button" id="f-cancel">Cancelar</button>
+        </div>
+        <p class="hint" id="form-owner">Al publicar recibirás un token de edición en este navegador para corregir o borrar tu punto.</p>
+      </form>
+
+      <section class="block">
+        <h2>Directorio colectivo</h2>
+        <input class="search" type="search" id="search" placeholder="Buscar en el mapa colectivo…" aria-label="Buscar en el mapa colectivo">
+        <div class="list" id="list"></div>
+      </section>
+
+      <section class="block">
+        <h2>Capas y filtros</h2>
+        <div class="checks" id="cats"></div>
+        <div class="sep"></div>
+        <div class="checks" id="states"></div>
+        <label class="check"><span class="left"><input type="checkbox" id="toggle-labels" checked> Etiquetas en el mapa</span></label>
+        <label class="check"><span class="left"><input type="checkbox" id="toggle-bounds" checked> Límites comunales</span></label>
+        <p class="hint">34 comunas del Gran Santiago. Límites de OpenStreetMap (admin_level=8).</p>
+      </section>
+
+      <section class="block">
+        <h2>Fondo del mapa</h2>
+        <div class="seg" id="basemaps">
+          <button type="button" data-base="dark" aria-pressed="true">Noche</button>
+          <button type="button" data-base="streets" aria-pressed="false">Calles</button>
+          <button type="button" data-base="topo" aria-pressed="false">Terreno</button>
+          <button type="button" data-base="sat" aria-pressed="false">Satélite</button>
+          <button type="button" data-base="none" aria-pressed="false">Sin fondo</button>
+        </div>
+        <p class="hint">Las teselas se piden a Esri, OpenStreetMap u OpenTopoMap. Los puntos viajan solo a este sitio.</p>
+        <p class="hint zoomwarn" id="zoomwarn" hidden>El fondo Noche no tiene detalle sobre el zoom 16. Cambia a Calles o Satélite.</p>
+      </section>
+
+      <section class="block">
+        <h2>Datos</h2>
+        <div class="row">
+          <button type="button" id="btn-geo">GeoJSON</button>
+          <button type="button" id="btn-backup">Respaldo</button>
+          <button type="button" id="btn-csv">CSV</button>
+          <button type="button" id="btn-import">Importar</button>
+          <input type="file" id="file" accept=".geojson,.json,application/geo+json,application/json" hidden>
+        </div>
+        <div class="row">
+          <button type="button" id="btn-print">Imprimir ficha</button>
+          <button type="button" id="btn-copy">Copiar resumen</button>
+        </div>
+        <div class="row" hidden>
+          <button type="button" id="btn-examples" hidden>Cargar ejemplos</button>
+          <button type="button" id="btn-noexamples" hidden>Quitar ejemplos</button>
+        </div>
+        <p class="hint">Exporta un respaldo antes de limpiar el navegador. El mapa colectivo vive en el servidor.</p>
+      </section>
+
+      <section class="block">
+        <h2>Moderación</h2>
+        <p class="hint">Solo para administración del mapa. El token no se guarda en el servidor.</p>
+        <div class="coordgo">
+          <input type="password" id="admin-token" placeholder="Token de administración" aria-label="Token de administración" autocomplete="off">
+          <button type="button" id="btn-admin">Entrar</button>
+        </div>
+        <div class="row" id="admin-actions" hidden>
+          <button type="button" id="btn-audit">Ver auditoría</button>
+          <button type="button" class="danger" id="btn-clear" style="color:#ff6b6b;border-color:#4a1414">Borrar todo</button>
+        </div>
+        <p class="hint" id="admin-status"></p>
+      </section>
+
+      <section class="block">
+        <h2>Resumen</h2>
+        <div class="stats" id="stats"></div>
+      </section>
+
+      <section class="block safety">
+        <h2>Autoseguridad</h2>
+        <p>No registres domicilios particulares, nombres de personas ni datos que puedan exponer a alguien. En este mapa colectivo lo que publicas lo ve cualquiera con el enlace.</p>
+        <label class="check"><input type="checkbox" id="safe-mode"> Modo seguro (oculta notas y contactos)</label>
+        <p class="safe-banner" id="safe-banner" hidden>Modo seguro activo: notas y contactos ocultos en pantalla. Los datos siguen guardados.</p>
+      </section>
+
+    </div>
+  </aside>
+
+  <section class="mapwrap" id="mapwrap">
+    <div id="map" role="application" aria-label="Mapa interactivo del Gran Santiago"></div>
+
+    <div class="netbar" id="netbar" hidden>
+      <span id="netbar-msg">Sin conexión con el servidor.</span>
+      <button type="button" id="btn-retry">Reintentar</button>
+    </div>
+
+    <div class="map-ui tr">
+      <button type="button" id="btn-locate" title="Mi ubicación" aria-label="Mi ubicación">◎</button>
+      <button type="button" id="btn-zoomin" title="Acercar" aria-label="Acercar">+</button>
+      <button type="button" id="btn-zoomout" title="Alejar" aria-label="Alejar">−</button>
+      <button type="button" id="btn-focus" title="Modo pantalla" aria-label="Modo pantalla">⛶</button>
+    </div>
+
+    <div class="coords">
+      <span id="coords">-33.52000, -70.62000</span>
+      <button type="button" id="btn-copycoords">copiar</button>
+    </div>
+
+    <div class="status" id="status" role="status" aria-live="polite">Cargando el mapa colectivo…</div>
+  </section>
+</main>
+
+<div id="print-area" hidden></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="/assets/leaflet/leaflet.js"></script>
+<script src="/assets/map-app.js"></script>
+</body>
+</html>
