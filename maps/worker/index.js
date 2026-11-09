@@ -1,7 +1,7 @@
 /**
  * Mapas Antarquía — Worker de Cloudflare
  *
- * Sirve dos mapas y una API colectiva sobre KV:
+ * Sirve dos mapas y una API colectiva sobre Durable Objects (SQLite):
  *   cartografia.antarquia.cl  → Cartografía Anarquista (Gran Santiago, abierto)
  *   cordillera.antarquia.cl   → Mapeo Cordillera (passphrase)
  *
@@ -11,7 +11,7 @@
  *   ADMIN_TOKEN            token para moderar y borrar el mapa
  *
  * Bindings:
- *   MAPS    namespace KV
+ *   MAPS    Durable Object MapStore (un almacén por mapa)
  *   ASSETS  assets estáticos de ../site
  */
 
@@ -261,58 +261,165 @@ async function ipHash(request, env) {
   return b64url(await sha256Bytes(ip + '|' + (env.SESSION_SECRET || 'mapas')));
 }
 
+/* ---------- Durable Object de almacenamiento ---------- */
+function storeStub(env, site) {
+  return env.MAPS.get(env.MAPS.idFromName(site));
+}
+
+async function storeOp(env, site, op, payload = {}) {
+  const res = await storeStub(env, site).fetch('https://store.internal/' + op, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error('Fallo del almacenamiento (' + res.status + ').');
+  return res.json();
+}
+
+export class MapStore {
+  constructor(ctx) {
+    this.sql = ctx.storage.sql;
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS items (
+      id TEXT PRIMARY KEY,
+      json TEXT NOT NULL,
+      updated TEXT NOT NULL,
+      hidden INTEGER NOT NULL DEFAULT 0
+    )`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS audit (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ts TEXT NOT NULL,
+      json TEXT NOT NULL
+    )`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS limits (
+      key TEXT PRIMARY KEY,
+      count INTEGER NOT NULL,
+      expires INTEGER NOT NULL
+    )`);
+  }
+
+  countItems() {
+    const rows = this.sql.exec('SELECT COUNT(*) AS n FROM items').toArray();
+    return rows.length ? Number(rows[0].n) : 0;
+  }
+
+  insertItem(item) {
+    this.sql.exec(
+      `INSERT INTO items (id, json, updated, hidden) VALUES (?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET json = excluded.json, updated = excluded.updated, hidden = excluded.hidden`,
+      item.id, JSON.stringify(item), item.updatedAt || '', item.hidden ? 1 : 0
+    );
+  }
+
+  async fetch(request) {
+    const url = new URL(request.url);
+    const op = url.pathname.replace(/^\//, '');
+    let body = {};
+    try { body = await request.json(); } catch (e) {}
+    const json = (data) => Response.json(data);
+
+    if (op === 'list') {
+      const rows = this.sql.exec(
+        'SELECT json FROM items WHERE (? = 1 OR hidden = 0) ORDER BY updated DESC',
+        body.includeHidden ? 1 : 0
+      ).toArray();
+      return json({ items: rows.map((r) => JSON.parse(r.json)) });
+    }
+    if (op === 'get') {
+      const rows = this.sql.exec('SELECT json FROM items WHERE id = ?', String(body.id)).toArray();
+      return json({ item: rows.length ? JSON.parse(rows[0].json) : null });
+    }
+    if (op === 'create') {
+      if (this.countItems() >= Number(body.max || MAX_ITEMS)) return json({ full: true });
+      this.insertItem(body.item);
+      return json({ ok: true });
+    }
+    if (op === 'import') {
+      const incoming = Array.isArray(body.items) ? body.items : [];
+      if (this.countItems() + incoming.length > Number(body.max || MAX_ITEMS)) return json({ full: true });
+      for (const item of incoming) this.insertItem(item);
+      return json({ ok: true, added: incoming.length });
+    }
+    if (op === 'update') {
+      const item = body.item;
+      this.sql.exec(
+        'UPDATE items SET json = ?, updated = ?, hidden = ? WHERE id = ?',
+        JSON.stringify(item), item.updatedAt || '', item.hidden ? 1 : 0, item.id
+      );
+      const changed = Number(this.sql.exec('SELECT changes() AS n').toArray()[0].n);
+      return json({ ok: changed > 0 });
+    }
+    if (op === 'delete') {
+      this.sql.exec('DELETE FROM items WHERE id = ?', String(body.id));
+      const changed = Number(this.sql.exec('SELECT changes() AS n').toArray()[0].n);
+      return json({ deleted: changed });
+    }
+    if (op === 'purge') {
+      const n = this.countItems();
+      this.sql.exec('DELETE FROM items');
+      return json({ deleted: n });
+    }
+    if (op === 'auditAdd') {
+      const entry = body.entry || {};
+      this.sql.exec('INSERT INTO audit (ts, json) VALUES (?, ?)', entry.ts || new Date().toISOString(), JSON.stringify(entry));
+      this.sql.exec('DELETE FROM audit WHERE id NOT IN (SELECT id FROM audit ORDER BY id DESC LIMIT ?)', AUDIT_MAX);
+      return json({ ok: true });
+    }
+    if (op === 'audit') {
+      const limit = Math.min(Number(body.limit || AUDIT_MAX), 500);
+      const rows = this.sql.exec('SELECT json FROM audit ORDER BY id DESC LIMIT ?', limit).toArray();
+      return json({ audit: rows.map((r) => JSON.parse(r.json)) });
+    }
+    if (op === 'rate') {
+      const now = Date.now();
+      const key = String(body.key);
+      const limit = Number(body.limit);
+      this.sql.exec('DELETE FROM limits WHERE expires < ?', now);
+      const rows = this.sql.exec('SELECT count, expires FROM limits WHERE key = ?', key).toArray();
+      if (rows.length) {
+        if (Number(rows[0].count) >= limit) {
+          return json({ allowed: false, retryAfter: Math.max(1, Math.ceil((Number(rows[0].expires) - now) / 1000)) });
+        }
+        this.sql.exec('UPDATE limits SET count = count + 1 WHERE key = ?', key);
+      } else {
+        this.sql.exec('INSERT INTO limits (key, count, expires) VALUES (?, 1, ?)', key, now + Number(body.windowSec) * 1000);
+      }
+      return json({ allowed: true });
+    }
+    return json({ error: 'operación desconocida' });
+  }
+}
+
 /* ---------- límites de tasa ---------- */
-async function rateLimit(env, key, limit, windowSec) {
+async function rateLimit(env, site, key, limit, windowSec) {
   const bucket = Math.floor(Date.now() / 1000 / windowSec);
-  const k = `rate:${key}:${bucket}`;
-  const current = parseInt((await env.MAPS.get(k)) || '0', 10);
-  if (current >= limit) return false;
-  await env.MAPS.put(k, String(current + 1), { expirationTtl: windowSec + 60 });
-  return true;
+  const res = await storeOp(env, site, 'rate', { key: `${site}:${key}:${bucket}`, limit, windowSec });
+  return !!res.allowed;
 }
 
 async function checkWriteLimit(request, env, site, bucket, limit, windowSec) {
   const h = await ipHash(request, env);
-  return rateLimit(env, `${site}:${bucket}:${h}`, limit, windowSec);
+  return rateLimit(env, site, `${bucket}:${h}`, limit, windowSec);
 }
 
 /* ---------- almacenamiento ---------- */
-const dataKey = (site) => `data:${site}`;
-const auditKey = (site) => `audit:${site}`;
-
-async function readAll(env, site) {
-  const raw = await env.MAPS.get(dataKey(site));
-  if (!raw) return [];
-  try {
-    const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : [];
-  } catch (e) {
-    return [];
-  }
-}
-
-async function writeAll(env, site, items) {
-  await env.MAPS.put(dataKey(site), JSON.stringify(items));
-}
-
 async function getItem(env, site, id) {
-  const all = await readAll(env, site);
-  return all.find((x) => x && x.id === id) || null;
+  const res = await storeOp(env, site, 'get', { id });
+  return res.item || null;
 }
 
 async function putItem(env, site, item) {
-  const all = await readAll(env, site);
-  const i = all.findIndex((x) => x && x.id === item.id);
-  if (i >= 0) all[i] = item;
-  else all.push(item);
-  await writeAll(env, site, all);
+  const res = await storeOp(env, site, 'update', { item });
+  return !!res.ok;
 }
 
 async function deleteItem(env, site, id) {
-  const all = await readAll(env, site);
-  const next = all.filter((x) => x && x.id !== id);
-  await writeAll(env, site, next);
-  return all.length - next.length;
+  const res = await storeOp(env, site, 'delete', { id });
+  return Number(res.deleted || 0);
+}
+
+async function listItems(env, site, includeHidden) {
+  const res = await storeOp(env, site, 'list', { includeHidden: !!includeHidden });
+  return Array.isArray(res.items) ? res.items : [];
 }
 
 function publicItem(item) {
@@ -320,22 +427,7 @@ function publicItem(item) {
   return safe;
 }
 
-async function listItems(env, site, includeHidden) {
-  const all = await readAll(env, site);
-  return all
-    .filter((item) => item && (includeHidden || !item.hidden))
-    .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
-}
-
 async function addAudit(env, site, request, action, item, extra = {}) {
-  const raw = (await env.MAPS.get(auditKey(site))) || '[]';
-  let list;
-  try {
-    list = JSON.parse(raw);
-    if (!Array.isArray(list)) list = [];
-  } catch (e) {
-    list = [];
-  }
   const entry = {
     ts: new Date().toISOString(),
     action,
@@ -345,8 +437,7 @@ async function addAudit(env, site, request, action, item, extra = {}) {
     ipHash: await ipHash(request, env),
     ...extra,
   };
-  list.unshift(entry);
-  await env.MAPS.put(auditKey(site), JSON.stringify(list.slice(0, AUDIT_MAX)));
+  await storeOp(env, site, 'auditAdd', { entry });
 }
 
 /* ---------- API ---------- */
@@ -384,10 +475,10 @@ async function handleApi(request, env, site, url) {
       return jsonError('El acceso no está configurado.', 503);
     }
     const h = await ipHash(request, env);
-    if (!(await rateLimit(env, `auth10m:${h}`, 5, 600))) {
+    if (!(await rateLimit(env, site, `auth10m:${h}`, 5, 600))) {
       return jsonError('Demasiados intentos. Espera 10 minutos.', 429, { retryAfter: 600 });
     }
-    if (!(await rateLimit(env, `auth1h:${h}`, 20, 3600))) {
+    if (!(await rateLimit(env, site, `auth1h:${h}`, 20, 3600))) {
       return jsonError('Demasiados intentos. Espera una hora.', 429, { retryAfter: 3600 });
     }
     const body = await request.json().catch(() => ({}));
@@ -432,8 +523,6 @@ async function handleApi(request, env, site, url) {
     if (!(await checkWriteLimit(request, env, site, 'create', site === SITE_CORD ? 120 : 20, 3600))) {
       return jsonError('Has creado demasiados elementos. Espera un rato.', 429, { retryAfter: 3600 });
     }
-    const all = await readAll(env, site);
-    if (all.length >= MAX_ITEMS) return jsonError('El mapa está lleno. Avisa al colectivo.', 507);
     const body = await request.json().catch(() => null);
     const cleaned = cleanItem(body, site);
     if (cleaned.error) return jsonError(cleaned.error, 422);
@@ -449,8 +538,8 @@ async function handleApi(request, env, site, url) {
       editToken = b64url(crypto.getRandomValues(new Uint8Array(24)));
       item.editTokenHash = b64url(await sha256Bytes(editToken));
     }
-    all.push(item);
-    await writeAll(env, site, all);
+    const stored = await storeOp(env, site, 'create', { item, max: MAX_ITEMS });
+    if (stored.full) return jsonError('El mapa está lleno. Avisa al colectivo.', 507);
     await addAudit(env, site, request, 'crear', item);
     return json({ item: publicItem(item), editToken: editToken || undefined }, 201);
   }
@@ -467,9 +556,8 @@ async function handleApi(request, env, site, url) {
     const incoming = body && Array.isArray(body.items) ? body.items : null;
     if (!incoming || !incoming.length) return jsonError('No hay elementos para importar.', 422);
     if (incoming.length > MAX_IMPORT) return jsonError(`Máximo ${MAX_IMPORT} elementos por importación.`, 422);
-    const all = await readAll(env, site);
-    if (all.length + incoming.length > MAX_ITEMS) return jsonError('El mapa está lleno. Avisa al colectivo.', 507);
     const created = [];
+    const built = [];
     const editTokens = {};
     for (const raw of incoming) {
       const cleaned = cleanItem(raw, site);
@@ -481,10 +569,11 @@ async function handleApi(request, env, site, url) {
         item.editTokenHash = b64url(await sha256Bytes(token));
         editTokens[item.id] = token;
       }
-      all.push(item);
+      built.push(item);
       created.push(publicItem(item));
     }
-    await writeAll(env, site, all);
+    const stored = await storeOp(env, site, 'import', { items: built, max: MAX_ITEMS });
+    if (stored.full) return jsonError('El mapa está lleno. Avisa al colectivo.', 507);
     if (created.length) await addAudit(env, site, request, 'importar', null, { count: created.length });
     return json({ items: created, editTokens }, 201);
   }
@@ -535,7 +624,8 @@ async function handleApi(request, env, site, url) {
       }
       if (!patch.name) return jsonError('El nombre es obligatorio.', 422);
       patch.updatedAt = new Date().toISOString();
-      await putItem(env, site, patch);
+      const updated = await putItem(env, site, patch);
+      if (!updated) return jsonError('Elemento no encontrado.', 404);
       await addAudit(env, site, request, patch.hidden ? 'ocultar' : 'editar', patch);
       return json({ item: publicItem(patch) });
     }
@@ -566,15 +656,8 @@ async function handleApi(request, env, site, url) {
     const auth = await requireSession(request, env, site);
     if (!auth.ok) return auth.response;
     if (!(await isAdmin(request, env))) return jsonError('Solo administración.', 403);
-    const raw = (await env.MAPS.get(auditKey(site))) || '[]';
-    let audit;
-    try {
-      audit = JSON.parse(raw);
-      if (!Array.isArray(audit)) audit = [];
-    } catch (e) {
-      audit = [];
-    }
-    return json({ audit });
+    const data = await storeOp(env, site, 'audit', { limit: AUDIT_MAX });
+    return json({ audit: Array.isArray(data.audit) ? data.audit : [] });
   }
 
   /* borrado total (administración) */
@@ -583,10 +666,9 @@ async function handleApi(request, env, site, url) {
     if (!(await isAdmin(request, env))) return jsonError('Solo administración.', 403);
     const body = await request.json().catch(() => ({}));
     if (body.confirm !== 'BORRAR') return jsonError('Falta la confirmación.', 422);
-    const all = await readAll(env, site);
-    await env.MAPS.delete(dataKey(site));
-    await addAudit(env, site, request, 'purgar', null, { count: all.length });
-    return json({ ok: true, deleted: all.length });
+    const data = await storeOp(env, site, 'purge');
+    await addAudit(env, site, request, 'purgar', null, { count: data.deleted });
+    return json({ ok: true, deleted: data.deleted });
   }
 
   return jsonError('Ruta no encontrada.', 404);

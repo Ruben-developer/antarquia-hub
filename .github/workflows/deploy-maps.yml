@@ -38,31 +38,6 @@ jobs:
       - name: Instalar dependencias
         run: npm ci --ignore-scripts
 
-      - name: Crear o reutilizar el namespace KV
-        run: |
-          set -euo pipefail
-          ID="$(npx wrangler kv namespace list | node -e '
-            let s = "";
-            process.stdin.on("data", d => s += d).on("end", () => {
-              try {
-                const list = JSON.parse(s);
-                const found = list.find(x => x.title === "mapas-antarquia");
-                if (found) process.stdout.write(found.id);
-              } catch (e) {}
-            });
-          ')"
-          if [ -z "$ID" ]; then
-            echo "Creando namespace mapas-antarquia…"
-            OUT="$(npx wrangler kv namespace create mapas-antarquia)"
-            ID="$(printf '%s\n' "$OUT" | grep -oE '[0-9a-f]{32}' | head -1)"
-          fi
-          if [ -z "$ID" ]; then
-            echo "No se pudo obtener el id del namespace KV." >&2
-            exit 1
-          fi
-          echo "KV id: $ID"
-          sed -i "s/__KV_ID__/$ID/g" wrangler.toml
-
       - name: Desplegar Worker y rutas
         run: npx wrangler deploy --config wrangler.toml
 

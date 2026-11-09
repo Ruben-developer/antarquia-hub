@@ -8,9 +8,13 @@ binding = "ASSETS"
 not_found_handling = "none"
 run_worker_first = true
 
-[[kv_namespaces]]
-binding = "MAPS"
-id = "__KV_ID__"
+[[durable_objects.bindings]]
+name = "MAPS"
+class_name = "MapStore"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MapStore"]
 
 [[routes]]
 pattern = "cartografia.antarquia.cl"

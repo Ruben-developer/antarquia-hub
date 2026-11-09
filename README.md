@@ -16,8 +16,9 @@ Utilidades (`utils.antarquia.cl`) queda fuera de la portada por decisión de pro
 HTML y CSS estáticos servidos por un Worker de Cloudflare con assets. El apex
 `antarquia.cl` se configura como custom domain del Worker.
 
-Los dos mapas viven en `maps/`: un Worker con API sobre KV, dos custom domains
-y un sitio estático compartido (Leaflet, límites comunales y `map-app.js`).
+Los dos mapas viven en `maps/`: un Worker con API sobre Durable Objects
+(SQLite), dos custom domains y un sitio estático compartido (Leaflet, límites
+comunales y `map-app.js`).
 
 ## Desarrollo
 
@@ -52,8 +53,8 @@ Los mapas usan además:
 - `SESSION_SECRET` — clave HMAC para firmar la cookie de sesión
 - `ADMIN_TOKEN` — token de moderación de ambos mapas
 
-El workflow crea (o reutiliza) el namespace KV `mapas-antarquia`, sustituye
-`__KV_ID__` y configura los tres secretos en el Worker.
+El workflow despliega el Worker con sus Durable Objects y configura los tres
+secretos. No hace falta crear ningún namespace por separado.
 
 ## DNS
 
