@@ -6,10 +6,12 @@ Portada de **https://antarquia.cl**. Enlaza a los proyectos públicos:
 - [Por la Anarquía](https://porlaanarquia.antarquia.cl/) — difusión
 - [Marea](https://marea.antarquia.cl/) — edición
 - [Punto de Ignición](https://puntodeignicion.antarquia.cl/) — proyección
-- [Cartografía Anarquista](https://cartografia.antarquia.cl/) — mapa colectivo del Gran Santiago
-- [Mapeo Cordillera](https://cordillera.antarquia.cl/) — mapa compartido de La Florida y Puente Alto (con frase)
 
 Utilidades (`utils.antarquia.cl`) queda fuera de la portada por decisión de producto.
+
+Los mapas colectivos (**Cartografía Anarquista** y **Mapeo Cordillera**) siguen
+desplegados en `maps/`, con sus dominios propios, pero ya no se enlazan desde la
+portada.
 
 ## Stack
 

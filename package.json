@@ -2,7 +2,7 @@
   "name": "antarquia-hub",
   "version": "1.0.0",
   "private": true,
-  "description": "Portada de antarquia.cl: enlaces a Marea, Por la Anarquía y La Idea",
+  "description": "Portada de antarquia.cl: enlaces a La Idea, Por la Anarquía, Marea y Punto de Ignición",
   "scripts": {
     "deploy": "wrangler deploy"
   },
