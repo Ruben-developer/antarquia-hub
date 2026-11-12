@@ -15,6 +15,7 @@ const STATES = {
   hecho:     { name: 'Resuelto',  color: '#9be37a' }
 };
 const TYPE_NAME = { point: 'Punto', line: 'Ruta', zone: 'Zona', radius: 'Radio' };
+const TYPE_NEW = { point: 'Nuevo punto', line: 'Nueva ruta', zone: 'Nueva zona', radius: 'Nuevo radio' };
 const STORAGE = 'mapa_cordillera_v1'; // datos de la versión local, para migrar
 const BASE_STORAGE = 'mapa_cordillera_base';
 const SAFE_STORAGE = 'mapa_cordillera_safe';
@@ -612,7 +613,7 @@ function stop(e) {
 }
 
 /* ---------- dibujo ---------- */
-function clearTransient() {
+function clearTransient(collapsePanel) {
   draft = [];
   pending = null;
   editingId = null;
@@ -621,8 +622,10 @@ function clearTransient() {
   $('#itemform').hidden = true;
   $('#drawbar').hidden = true;
   $('#mapwrap').classList.remove('drawing');
+  document.body.classList.remove('drawing-mode');
   activeTool = null;
   $$('.tool').forEach(b => b.classList.toggle('on', false));
+  if (collapsePanel && useSheetUI()) setPanel(false);
 }
 
 function drawPreview() {
@@ -687,13 +690,20 @@ function lineLength(coords) {
 
 function setTool(tool) {
   clearTransient();
-  if (tool === 'locate') { locate(); return; }
+  if (tool === 'locate') { if (useSheetUI()) setPanel(false); locate(); return; }
   if (!tool) { setStatus('Listo. Elige una herramienta o toca un elemento.'); return; }
   activeTool = tool;
   $$('.tool').forEach(b => b.classList.toggle('on', b.dataset.tool === tool));
   $('#mapwrap').classList.add('drawing');
+  document.body.classList.add('drawing-mode');
   $('#drawbar').hidden = false;
-  const hints = {
+  const hints = useSheetUI() ? {
+    point: 'Toca el mapa para ubicar el punto.',
+    line: 'Toca el mapa para sumar vértices. Usa Guardar para terminar.',
+    zone: 'Toca el mapa para delimitar la zona (mínimo 3 vértices).',
+    radius: 'Toca el mapa para fijar el centro y ajusta el radio.',
+    measure: 'Toca el mapa para medir un recorrido. Usa Terminar.'
+  } : {
     point: 'Haz clic en el mapa para ubicar el punto.',
     line: 'Haz clic para sumar vértices. Enter o Guardar para terminar.',
     zone: 'Haz clic para delimitar la zona (mínimo 3 vértices).',
@@ -705,6 +715,7 @@ function setTool(tool) {
   $('#btn-undo').hidden = (tool === 'point' || tool === 'radius');
   $('#btn-finish').textContent = tool === 'measure' ? 'Terminar' : 'Guardar';
   setStatus(hints[tool] || '', 'warn');
+  if (useSheetUI()) setPanel(false);
 }
 
 function metaFor(type, coords, radius) {
@@ -738,14 +749,19 @@ function beginForm(type, coords, extra) {
   pending = { type: type, coords: coords, radius: extra && extra.radius ? extra.radius : 500 };
   editingId = null;
   fillForm(null);
-  $('#formtitle').textContent = 'Nuevo ' + TYPE_NAME[type].toLowerCase();
+  $('#formtitle').textContent = TYPE_NEW[type];
   $('#radiusfield').hidden = type !== 'radius';
   $('#f-save').textContent = CONFIG.gated ? 'Guardar' : 'Publicar';
   $('#formmeta').textContent = metaFor(type, coords, pending.radius);
   $('#itemform').hidden = false;
   drawPreview();
-  $('#itemform').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  setTimeout(() => $('#f-name').focus(), 80);
+  if (useSheetUI()) {
+    setPanel(true);
+    setTimeout(() => $('#itemform').scrollIntoView({ block: 'start', behavior: 'smooth' }), 280);
+  } else {
+    $('#itemform').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+  setTimeout(() => $('#f-name').focus({ preventScroll: true }), useSheetUI() ? 420 : 80);
   setStatus('Completa los datos y guarda.', 'warn');
 }
 
@@ -762,7 +778,11 @@ function beginEdit(it) {
   $('#itemform').hidden = false;
   drawPreview();
   flyToItem(it);
-  setTimeout(() => $('#f-name').focus(), 100);
+  if (useSheetUI()) {
+    setPanel(true);
+    setTimeout(() => $('#itemform').scrollIntoView({ block: 'start', behavior: 'smooth' }), 280);
+  }
+  setTimeout(() => $('#f-name').focus({ preventScroll: true }), useSheetUI() ? 420 : 100);
   setStatus('Editando: ' + it.name, 'warn');
 }
 
@@ -796,6 +816,7 @@ function endMeasure() {
   activeTool = null;
   $$('.tool').forEach(b => b.classList.toggle('on', false));
   $('#mapwrap').classList.remove('drawing');
+  document.body.classList.remove('drawing-mode');
   $('#drawbar').hidden = true;
   setStatus(`Medición: ${fmtDist(total)} · ~${walkTime(total)} a pie.`);
 }
@@ -914,7 +935,7 @@ function openPopup(it, latlng) {
   }
   el.append(actions);
 
-  L.popup({ maxWidth: 300, className: 'map-pop', autoPanPadding: [24, 24] })
+  L.popup({ maxWidth: 300, className: 'map-pop', autoPanPadding: useSheetUI() ? [24, 104] : [24, 24] })
     .setLatLng(latlng).setContent(el).openOn(map);
 }
 
@@ -955,8 +976,8 @@ $('#btn-undo').addEventListener('click', () => {
   draft.pop();
   updateDraft();
 });
-$('#btn-cancel').addEventListener('click', () => { clearTransient(); setStatus('Cancelado.'); });
-$('#f-cancel').addEventListener('click', () => { clearTransient(); setStatus('Cancelado.'); });
+$('#btn-cancel').addEventListener('click', () => { clearTransient(true); setStatus('Cancelado.'); });
+$('#f-cancel').addEventListener('click', () => { clearTransient(true); setStatus('Cancelado.'); });
 $('#f-radius-range').addEventListener('input', e => syncRadius(e.target.value));
 $('#f-radius').addEventListener('input', e => syncRadius(e.target.value));
 
@@ -1002,7 +1023,7 @@ $('#itemform').addEventListener('submit', async e => {
       }
       toast(CONFIG.gated ? 'Elemento guardado.' : 'Elemento publicado. Guardamos tu token de edición en este navegador.');
     }
-    clearTransient();
+    clearTransient(true);
     await refreshItems();
   } catch (err) {
     toast(err.message);
@@ -1389,12 +1410,46 @@ document.addEventListener('fullscreenchange', () => {
   }
 });
 
-$('#panel-toggle').addEventListener('click', () => {
+/* ---------- hoja inferior en móvil ---------- */
+const mqMobile = window.matchMedia('(max-width:900px)');
+function useSheetUI() { return mqMobile.matches && CONFIG.site === 'cordillera'; }
+
+function setPanel(open) {
   const panel = $('#panel');
-  const col = panel.classList.toggle('collapsed');
-  $('#panel-toggle').setAttribute('aria-expanded', String(!col));
-  $('#panel-toggle').textContent = col ? '▴' : '▾';
-  setTimeout(() => map.invalidateSize(), 260);
+  const btn = $('#panel-toggle');
+  panel.classList.toggle('collapsed', !open);
+  document.body.classList.toggle('sheet-open', open && useSheetUI());
+  btn.setAttribute('aria-expanded', String(open));
+  btn.textContent = open ? '▾' : '▴';
+  btn.title = open ? 'Plegar panel' : 'Abrir panel';
+  setTimeout(() => map.invalidateSize(), 280);
+}
+
+const drawbarEl = $('#drawbar');
+const drawbarHome = drawbarEl.parentNode;
+const drawbarAnchor = drawbarEl.nextElementSibling;
+
+function placeDrawbar() {
+  if (useSheetUI()) {
+    if (drawbarEl.parentNode !== $('#mapwrap')) $('#mapwrap').append(drawbarEl);
+  } else if (drawbarEl.parentNode !== drawbarHome) {
+    drawbarHome.insertBefore(drawbarEl, drawbarAnchor);
+  }
+}
+
+$('#panel-toggle').addEventListener('click', () => {
+  setPanel($('#panel').classList.contains('collapsed'));
+});
+
+$('.panel-head').addEventListener('click', e => {
+  if (!useSheetUI() || e.target.closest('button')) return;
+  setPanel($('#panel').classList.contains('collapsed'));
+});
+
+mqMobile.addEventListener('change', () => {
+  placeDrawbar();
+  setPanel(!useSheetUI());
+  setTimeout(() => map.invalidateSize(), 320);
 });
 
 function applySafe() {
@@ -1410,7 +1465,7 @@ document.addEventListener('keydown', e => {
   const tag = (e.target.tagName || '').toLowerCase();
   if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
   const k = e.key.toLowerCase();
-  if (k === 'escape') { clearTransient(); setStatus('Cancelado.'); return; }
+  if (k === 'escape') { clearTransient(true); setStatus('Cancelado.'); return; }
   if (k === 'enter' && activeTool) { e.preventDefault(); finishDraw(); return; }
   const mapKeys = { p: 'point', r: 'line', z: 'zone', c: 'radius', m: 'measure' };
   if (mapKeys[k]) { e.preventDefault(); setTool(activeTool === mapKeys[k] ? null : mapKeys[k]); }
@@ -1841,6 +1896,11 @@ map.on('tileerror', () => {
 
 async function init() {
   populateSelects();
+  if (useSheetUI()) {
+    placeDrawbar();
+    setPanel(false);
+    L.Popup.prototype.options.autoPanPadding = L.point(20, 96);
+  }
   $('#safe-mode').checked = safeMode;
   applySafe();
   applyAdmin();
