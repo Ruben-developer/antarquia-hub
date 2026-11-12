@@ -625,7 +625,7 @@ function clearTransient(collapsePanel) {
   document.body.classList.remove('drawing-mode');
   activeTool = null;
   $$('.tool').forEach(b => b.classList.toggle('on', false));
-  if (collapsePanel && useSheetUI()) setPanel(false);
+  if (collapsePanel && isMobile()) setPanel(false);
 }
 
 function drawPreview() {
@@ -690,14 +690,14 @@ function lineLength(coords) {
 
 function setTool(tool) {
   clearTransient();
-  if (tool === 'locate') { if (useSheetUI()) setPanel(false); locate(); return; }
+  if (tool === 'locate') { if (isMobile()) setPanel(false); locate(); return; }
   if (!tool) { setStatus('Listo. Elige una herramienta o toca un elemento.'); return; }
   activeTool = tool;
   $$('.tool').forEach(b => b.classList.toggle('on', b.dataset.tool === tool));
   $('#mapwrap').classList.add('drawing');
   document.body.classList.add('drawing-mode');
   $('#drawbar').hidden = false;
-  const hints = useSheetUI() ? {
+  const hints = isMobile() ? {
     point: 'Toca el mapa para ubicar el punto.',
     line: 'Toca el mapa para sumar vértices. Usa Guardar para terminar.',
     zone: 'Toca el mapa para delimitar la zona (mínimo 3 vértices).',
@@ -715,7 +715,7 @@ function setTool(tool) {
   $('#btn-undo').hidden = (tool === 'point' || tool === 'radius');
   $('#btn-finish').textContent = tool === 'measure' ? 'Terminar' : 'Guardar';
   setStatus(hints[tool] || '', 'warn');
-  if (useSheetUI()) setPanel(false);
+  if (isMobile()) setPanel(false);
 }
 
 function metaFor(type, coords, radius) {
@@ -755,13 +755,13 @@ function beginForm(type, coords, extra) {
   $('#formmeta').textContent = metaFor(type, coords, pending.radius);
   $('#itemform').hidden = false;
   drawPreview();
-  if (useSheetUI()) {
+  if (isMobile()) {
     setPanel(true);
     setTimeout(() => $('#itemform').scrollIntoView({ block: 'start', behavior: 'smooth' }), 280);
   } else {
     $('#itemform').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
-  setTimeout(() => $('#f-name').focus({ preventScroll: true }), useSheetUI() ? 420 : 80);
+  setTimeout(() => $('#f-name').focus({ preventScroll: true }), isMobile() ? 420 : 80);
   setStatus('Completa los datos y guarda.', 'warn');
 }
 
@@ -778,11 +778,11 @@ function beginEdit(it) {
   $('#itemform').hidden = false;
   drawPreview();
   flyToItem(it);
-  if (useSheetUI()) {
+  if (isMobile()) {
     setPanel(true);
     setTimeout(() => $('#itemform').scrollIntoView({ block: 'start', behavior: 'smooth' }), 280);
   }
-  setTimeout(() => $('#f-name').focus({ preventScroll: true }), useSheetUI() ? 420 : 100);
+  setTimeout(() => $('#f-name').focus({ preventScroll: true }), isMobile() ? 420 : 100);
   setStatus('Editando: ' + it.name, 'warn');
 }
 
@@ -935,7 +935,7 @@ function openPopup(it, latlng) {
   }
   el.append(actions);
 
-  L.popup({ maxWidth: 300, className: 'map-pop', autoPanPadding: useSheetUI() ? [24, 104] : [24, 24] })
+  L.popup({ maxWidth: 300, className: 'map-pop', autoPanPadding: isMobile() ? [24, 104] : [24, 24] })
     .setLatLng(latlng).setContent(el).openOn(map);
 }
 
@@ -1412,13 +1412,13 @@ document.addEventListener('fullscreenchange', () => {
 
 /* ---------- hoja inferior en móvil ---------- */
 const mqMobile = window.matchMedia('(max-width:900px)');
-function useSheetUI() { return mqMobile.matches && CONFIG.site === 'cordillera'; }
+function isMobile() { return mqMobile.matches; }
 
 function setPanel(open) {
   const panel = $('#panel');
   const btn = $('#panel-toggle');
   panel.classList.toggle('collapsed', !open);
-  document.body.classList.toggle('sheet-open', open && useSheetUI());
+  document.body.classList.toggle('sheet-open', open && isMobile());
   btn.setAttribute('aria-expanded', String(open));
   btn.textContent = open ? '▾' : '▴';
   btn.title = open ? 'Plegar panel' : 'Abrir panel';
@@ -1430,7 +1430,7 @@ const drawbarHome = drawbarEl.parentNode;
 const drawbarAnchor = drawbarEl.nextElementSibling;
 
 function placeDrawbar() {
-  if (useSheetUI()) {
+  if (isMobile()) {
     if (drawbarEl.parentNode !== $('#mapwrap')) $('#mapwrap').append(drawbarEl);
   } else if (drawbarEl.parentNode !== drawbarHome) {
     drawbarHome.insertBefore(drawbarEl, drawbarAnchor);
@@ -1442,13 +1442,13 @@ $('#panel-toggle').addEventListener('click', () => {
 });
 
 $('.panel-head').addEventListener('click', e => {
-  if (!useSheetUI() || e.target.closest('button')) return;
+  if (!isMobile() || e.target.closest('button')) return;
   setPanel($('#panel').classList.contains('collapsed'));
 });
 
 mqMobile.addEventListener('change', () => {
   placeDrawbar();
-  setPanel(!useSheetUI());
+  setPanel(!isMobile());
   setTimeout(() => map.invalidateSize(), 320);
 });
 
@@ -1896,7 +1896,7 @@ map.on('tileerror', () => {
 
 async function init() {
   populateSelects();
-  if (useSheetUI()) {
+  if (isMobile()) {
     placeDrawbar();
     setPanel(false);
     L.Popup.prototype.options.autoPanPadding = L.point(20, 96);
